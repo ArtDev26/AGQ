@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+
+import '../bloc/auth_bloc.dart';
+import '../bloc/auth_event.dart';
+import '../bloc/auth_state.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -24,171 +30,237 @@ class _LoginPageState extends State<LoginPage> {
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
 
-    // TODO: aquí luego conectas tu AuthBloc / API
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Login OK (pendiente API)')));
+    context.read<AuthBloc>().add(
+      AuthLoginRequested(
+        username: _usuarioCtrl.text.trim(),
+        password: _passCtrl.text.trim(),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          const _HeaderLogoBackground(),
+    return BlocListener<AuthBloc, AuthState>(
+      listener: (context, state) {
+        if (state is AuthAuthenticated) {
+          context.go('/home');
+        }
 
-          SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 18,
-                ),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 210), // espacio del header
+        if (state is AuthFailure) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(state.message)));
+        }
+      },
+      child: Scaffold(
+        resizeToAvoidBottomInset: true,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight:
+                    MediaQuery.of(context).size.height -
+                    MediaQuery.of(context).padding.top,
+              ),
+              child: Stack(
+                children: [
+                  // HEADER VERDE (AGQ + settings)
+                  _HeaderAGQ(
+                    onSettings: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Ajustes (pendiente)')),
+                      );
+                    },
+                  ),
 
-                      Card(
-                        elevation: 10,
-                        shadowColor: Colors.black26,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-                          child: Form(
-                            key: _formKey,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                const Text(
-                                  'Iniciar sesión',
-                                  style: TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                const Text(
-                                  'Accede para registrar evaluaciones de control de calidad.',
-                                  style: TextStyle(color: Colors.black54),
-                                ),
-                                const SizedBox(height: 16),
-
-                                TextFormField(
-                                  controller: _usuarioCtrl,
-                                  textInputAction: TextInputAction.next,
-                                  decoration: InputDecoration(
-                                    labelText: 'Usuario',
-                                    hintText: 'Ej: jlopez',
-                                    prefixIcon: const Icon(
-                                      Icons.person_outline,
-                                    ),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                  validator: (v) =>
-                                      (v == null || v.trim().isEmpty)
-                                      ? 'Ingrese su usuario'
-                                      : null,
-                                ),
-                                const SizedBox(height: 12),
-
-                                TextFormField(
-                                  controller: _passCtrl,
-                                  obscureText: _hidePass,
-                                  textInputAction: TextInputAction.done,
-                                  decoration: InputDecoration(
-                                    labelText: 'Contraseña',
-                                    prefixIcon: const Icon(Icons.lock_outline),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    suffixIcon: IconButton(
-                                      onPressed: () => setState(
-                                        () => _hidePass = !_hidePass,
-                                      ),
-                                      icon: Icon(
-                                        _hidePass
-                                            ? Icons.visibility_off
-                                            : Icons.visibility,
-                                      ),
-                                    ),
-                                  ),
-                                  validator: (v) => (v == null || v.isEmpty)
-                                      ? 'Ingrese su contraseña'
-                                      : null,
-                                  onFieldSubmitted: (_) => _submit(),
-                                ),
-
-                                const SizedBox(height: 16),
-
-                                SizedBox(
-                                  height: 48,
-                                  child: ElevatedButton(
-                                    onPressed: _submit,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF1B5E20),
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                    child: const Text('Ingresar'),
-                                  ),
-                                ),
-
-                                const SizedBox(height: 10),
-
-                                TextButton(
-                                  onPressed: () {},
-                                  child: const Text(
-                                    '¿Olvidaste tu contraseña?',
-                                  ),
-                                ),
-                              ],
-                            ),
+                  // TARJETA LOGIN
+                  Positioned.fill(
+                    top: 220,
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 420),
+                          child: _LoginCard(
+                            formKey: _formKey,
+                            usuarioCtrl: _usuarioCtrl,
+                            passCtrl: _passCtrl,
+                            hidePass: _hidePass,
+                            onTogglePass: () =>
+                                setState(() => _hidePass = !_hidePass),
+                            onSubmit: _submit,
                           ),
                         ),
                       ),
-
-                      const SizedBox(height: 14),
-
-                      const Text(
-                        'AGQ • Evaluar. Medir. Mejorar.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.black45),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _HeaderLogoBackground extends StatelessWidget {
-  const _HeaderLogoBackground();
+class _LoginCard extends StatelessWidget {
+  const _LoginCard({
+    required this.formKey,
+    required this.usuarioCtrl,
+    required this.passCtrl,
+    required this.hidePass,
+    required this.onTogglePass,
+    required this.onSubmit,
+  });
+
+  final GlobalKey<FormState> formKey;
+  final TextEditingController usuarioCtrl;
+  final TextEditingController passCtrl;
+  final bool hidePass;
+  final VoidCallback onTogglePass;
+  final VoidCallback onSubmit;
 
   @override
   Widget build(BuildContext context) {
-    const double headerHeight = 300;
+    final isLoading = context.watch<AuthBloc>().state is AuthLoading;
 
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.92),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            blurRadius: 18,
+            offset: Offset(0, 8),
+            color: Colors.black26,
+          ),
+        ],
+      ),
+      child: Form(
+        key: formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Iniciar sesión',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Accede para registrar evaluaciones de control de calidad.',
+                style: TextStyle(color: Colors.black54),
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            TextFormField(
+              controller: usuarioCtrl,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Usuario',
+                prefixIcon: Icon(Icons.person_outline),
+                border: OutlineInputBorder(),
+              ),
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) return 'Ingrese usuario';
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
+
+            TextFormField(
+              controller: passCtrl,
+              obscureText: hidePass,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => onSubmit(),
+              decoration: InputDecoration(
+                labelText: 'Contraseña',
+                prefixIcon: const Icon(Icons.lock_outline),
+                border: const OutlineInputBorder(),
+                suffixIcon: IconButton(
+                  onPressed: onTogglePass,
+                  icon: Icon(
+                    hidePass ? Icons.visibility : Icons.visibility_off,
+                  ),
+                ),
+              ),
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) return 'Ingrese contraseña';
+                return null;
+              },
+            ),
+
+            const SizedBox(height: 14),
+
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: isLoading ? null : onSubmit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1B5E20),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: isLoading
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Ingresar'),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            TextButton(
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Recuperar contraseña (pendiente)'),
+                  ),
+                );
+              },
+              child: const Text('¿Olvidaste tu contraseña?'),
+            ),
+
+            const SizedBox(height: 6),
+
+            const Text(
+              'AGQ • Evaluar. Medir. Mejorar.',
+              style: TextStyle(color: Colors.black45),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeaderAGQ extends StatelessWidget {
+  const _HeaderAGQ({required this.onSettings});
+
+  final VoidCallback onSettings;
+
+  @override
+  Widget build(BuildContext context) {
     return SizedBox(
-      height: headerHeight,
+      height: 300,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Fondo degradado verde
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -202,24 +274,46 @@ class _HeaderLogoBackground extends StatelessWidget {
               ),
             ),
           ),
-
-          // Logo como fondo (translúcido)
-          Align(
-            alignment: Alignment.topCenter,
+          Center(
             child: Padding(
-              padding: const EdgeInsets.only(top: 22),
-              child: Opacity(
-                opacity: 0.18,
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  height: 220,
-                  fit: BoxFit.contain,
+              padding: const EdgeInsets.only(bottom: 36),
+              child: Text(
+                'AGQ',
+                style: TextStyle(
+                  fontSize: 84,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 4,
+                  color: Colors.white.withOpacity(0.95),
                 ),
               ),
             ),
           ),
-
-          // Curva blanca inferior
+          Align(
+            alignment: Alignment.topRight,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 18, right: 14),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: onSettings,
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.white.withOpacity(0.22)),
+                    ),
+                    child: const Icon(
+                      Icons.settings,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
           Align(
             alignment: Alignment.bottomCenter,
             child: Container(

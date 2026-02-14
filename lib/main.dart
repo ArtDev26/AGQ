@@ -9,7 +9,7 @@ void main() {
 
   runApp(
     MultiBlocProvider(
-      providers: [BlocProvider(create: (_) => AuthBloc())],
+      providers: [BlocProvider<AuthBloc>(create: (_) => AuthBloc())],
       child: const AgqApp(),
     ),
   );

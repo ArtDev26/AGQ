@@ -13,7 +13,6 @@ class AgqApp extends StatelessWidget {
 
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
-      title: 'AGQ',
       routerConfig: buildRouter(authBloc),
     );
   }
