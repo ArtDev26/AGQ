@@ -38,7 +38,7 @@ GoRouter buildRouter(AuthBloc authBloc) {
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
       GoRoute(path: '/home', builder: (context, state) => const HomePage()),
       GoRoute(
-        path: '/home',
+        path: '/estimacion/brix',
         builder: (context, state) => const MedicionBrixPreCosechaPage(),
       ),
 
