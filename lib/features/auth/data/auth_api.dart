@@ -1,14 +1,15 @@
 import 'package:http/http.dart' as http;
 
-class AuthApi {
-  static const String _baseUrl =
-      'https://agkwebagro.agrokasa.pe/WSRESTMovilidadERP';
+import '../../../core/config/api_config.dart';
 
+class AuthApi {
   Future<String> login({
     required String username,
     required String password,
   }) async {
-    final url = Uri.parse('$_baseUrl/api/login/authenticate');
+    final base = ApiConfig.currentBaseUrl;
+
+    final url = Uri.parse('$base/api/login/authenticate');
 
     final response = await http.post(
       url,

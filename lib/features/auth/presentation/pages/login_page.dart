@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../bloc/auth_bloc.dart';
 import '../bloc/auth_event.dart';
 import '../bloc/auth_state.dart';
+import '../../../../core/config/api_config.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -38,6 +39,62 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  void _openApiDialog(BuildContext context) {
+    final ctrl = TextEditingController(text: ApiConfig.currentBaseUrl);
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Configuración'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Base URL:'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  //hintText: 'https://tu-dominio/WSRESTMovilidadERP',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final v = ctrl.text.trim();
+                if (v.isEmpty || !v.startsWith('http')) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('URL inválida')));
+                  return;
+                }
+
+                ApiConfig.baseUrl.value = v;
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('API guardada: ${ApiConfig.currentBaseUrl}'),
+                  ),
+                );
+
+                Navigator.of(ctx).pop();
+              },
+              child: const Text('Guardar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocListener<AuthBloc, AuthState>(
@@ -66,13 +123,7 @@ class _LoginPageState extends State<LoginPage> {
               child: Stack(
                 children: [
                   // HEADER VERDE (AGQ + settings)
-                  _HeaderAGQ(
-                    onSettings: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Ajustes (pendiente)')),
-                      );
-                    },
-                  ),
+                  _HeaderAGQ(onSettings: () => _openApiDialog(context)),
 
                   // TARJETA LOGIN
                   Positioned.fill(
@@ -203,22 +254,35 @@ class _LoginCard extends StatelessWidget {
 
             SizedBox(
               width: double.infinity,
-              height: 48,
+              height: 52,
               child: ElevatedButton(
                 onPressed: isLoading ? null : onSubmit,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF1B5E20),
+                  foregroundColor: Colors.white,
+                  elevation: 6,
+                  shadowColor: Colors.black45,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
                 child: isLoading
                     ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
                       )
-                    : const Text('Ingresar'),
+                    : const Text(
+                        'INGRESAR',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
               ),
             ),
 
