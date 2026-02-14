@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../bloc/auth_bloc.dart';
 import '../bloc/auth_event.dart';
@@ -20,6 +22,56 @@ class _LoginPageState extends State<LoginPage> {
   final _passCtrl = TextEditingController();
 
   bool _hidePass = true;
+
+  // ✅ Recordar usuario + contraseña
+  bool _rememberCreds = false;
+
+  // SharedPreferences keys
+  static const _kRememberCreds = 'remember_creds';
+  static const _kRememberedUsername = 'remembered_username';
+
+  // Secure storage keys
+  static const _kRememberedPassword = 'remembered_password';
+  static const _secure = FlutterSecureStorage();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRememberedCreds();
+  }
+
+  Future<void> _loadRememberedCreds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final remember = prefs.getBool(_kRememberCreds) ?? false;
+    final username = prefs.getString(_kRememberedUsername) ?? '';
+
+    String password = '';
+    if (remember) {
+      password = (await _secure.read(key: _kRememberedPassword)) ?? '';
+    }
+
+    if (!mounted) return;
+
+    setState(() => _rememberCreds = remember);
+
+    if (remember) {
+      if (username.isNotEmpty) _usuarioCtrl.text = username;
+      if (password.isNotEmpty) _passCtrl.text = password;
+    }
+  }
+
+  Future<void> _persistRememberedCredsIfNeeded() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kRememberCreds, _rememberCreds);
+
+    if (_rememberCreds) {
+      await prefs.setString(_kRememberedUsername, _usuarioCtrl.text.trim());
+      await _secure.write(key: _kRememberedPassword, value: _passCtrl.text);
+    } else {
+      await prefs.remove(_kRememberedUsername);
+      await _secure.delete(key: _kRememberedPassword);
+    }
+  }
 
   @override
   void dispose() {
@@ -55,10 +107,7 @@ class _LoginPageState extends State<LoginPage> {
               TextField(
                 controller: ctrl,
                 keyboardType: TextInputType.url,
-                decoration: const InputDecoration(
-                  //hintText: 'https://tu-dominio/WSRESTMovilidadERP',
-                  border: OutlineInputBorder(),
-                ),
+                decoration: const InputDecoration(border: OutlineInputBorder()),
               ),
             ],
           ),
@@ -98,8 +147,11 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return BlocListener<AuthBloc, AuthState>(
-      listener: (context, state) {
+      listener: (context, state) async {
         if (state is AuthAuthenticated) {
+          // ✅ Guarda usuario + contraseña si está activado el check
+          await _persistRememberedCredsIfNeeded();
+          if (!context.mounted) return;
           context.go('/home');
         }
 
@@ -122,10 +174,7 @@ class _LoginPageState extends State<LoginPage> {
               ),
               child: Stack(
                 children: [
-                  // HEADER VERDE (AGQ + settings)
                   _HeaderAGQ(onSettings: () => _openApiDialog(context)),
-
-                  // TARJETA LOGIN
                   Positioned.fill(
                     top: 220,
                     child: Align(
@@ -142,6 +191,9 @@ class _LoginPageState extends State<LoginPage> {
                             onTogglePass: () =>
                                 setState(() => _hidePass = !_hidePass),
                             onSubmit: _submit,
+                            rememberCreds: _rememberCreds,
+                            onRememberChanged: (v) =>
+                                setState(() => _rememberCreds = v ?? false),
                           ),
                         ),
                       ),
@@ -165,6 +217,8 @@ class _LoginCard extends StatelessWidget {
     required this.hidePass,
     required this.onTogglePass,
     required this.onSubmit,
+    required this.rememberCreds,
+    required this.onRememberChanged,
   });
 
   final GlobalKey<FormState> formKey;
@@ -173,6 +227,9 @@ class _LoginCard extends StatelessWidget {
   final bool hidePass;
   final VoidCallback onTogglePass;
   final VoidCallback onSubmit;
+
+  final bool rememberCreds;
+  final ValueChanged<bool?> onRememberChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -221,10 +278,8 @@ class _LoginCard extends StatelessWidget {
                 prefixIcon: Icon(Icons.person_outline),
                 border: OutlineInputBorder(),
               ),
-              validator: (v) {
-                if (v == null || v.trim().isEmpty) return 'Ingrese usuario';
-                return null;
-              },
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Ingrese usuario' : null,
             ),
             const SizedBox(height: 12),
 
@@ -244,13 +299,32 @@ class _LoginCard extends StatelessWidget {
                   ),
                 ),
               ),
-              validator: (v) {
-                if (v == null || v.trim().isEmpty) return 'Ingrese contraseña';
-                return null;
-              },
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Ingrese contraseña' : null,
             ),
 
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
+
+            // ✅ Checkbox a la izquierda
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Checkbox(
+                      value: rememberCreds,
+                      onChanged: onRememberChanged,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const Text('Recordar contraseña'),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 10),
 
             SizedBox(
               width: double.infinity,
@@ -287,19 +361,6 @@ class _LoginCard extends StatelessWidget {
             ),
 
             const SizedBox(height: 10),
-
-            TextButton(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Recuperar contraseña (pendiente)'),
-                  ),
-                );
-              },
-              child: const Text('¿Olvidaste tu contraseña?'),
-            ),
-
-            const SizedBox(height: 6),
 
             const Text(
               'AGQ • Evaluar. Medir. Mejorar.',

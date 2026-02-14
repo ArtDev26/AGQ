@@ -7,6 +7,7 @@ import '../features/auth/presentation/bloc/auth_bloc.dart';
 import '../features/auth/presentation/bloc/auth_state.dart';
 import '../features/auth/presentation/pages/login_page.dart';
 import '../features/home/presentation/pages/home_page.dart';
+import '../features/home/presentation/pages/brix_pre_cosecha.dart';
 
 GoRouter buildRouter(AuthBloc authBloc) {
   return GoRouter(
@@ -36,6 +37,10 @@ GoRouter buildRouter(AuthBloc authBloc) {
     routes: [
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
       GoRoute(path: '/home', builder: (context, state) => const HomePage()),
+      GoRoute(
+        path: '/home',
+        builder: (context, state) => const MedicionBrixPreCosechaPage(),
+      ),
 
       // Luego agregas:
       // GoRoute(path: '/evaluaciones', builder: ...),

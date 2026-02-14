@@ -34,61 +34,12 @@ class HomePage extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: [
+                children: const [
                   _KpiCard(
                     title: 'Bienvenido',
                     subtitle:
                         'Selecciona una cartilla desde el menú ☰ para iniciar una evaluación.',
                     icon: Icons.fact_check_outlined,
-                  ),
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton.icon(
-                      onPressed: () => Scaffold.of(context).openDrawer(),
-                      icon: const Icon(Icons.menu),
-                      label: const Text(
-                        'Abrir cartillas',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.6,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF1B5E20),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: OutlinedButton.icon(
-                      onPressed: () => context.read<AuthBloc>().add(
-                        const AuthLogoutRequested(),
-                      ),
-                      icon: const Icon(Icons.logout),
-                      label: const Text(
-                        'Cerrar sesión',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF1B5E20),
-                        side: const BorderSide(color: Color(0xFF1B5E20)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                    ),
                   ),
                 ],
               ),
@@ -153,7 +104,7 @@ class _AppDrawer extends StatelessWidget {
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 10, 16, 6),
                     child: Text(
-                      'Selecciona',
+                      'Módulos',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         color: Colors.black54,
@@ -161,38 +112,73 @@ class _AppDrawer extends StatelessWidget {
                     ),
                   ),
 
-                  // CARTILLAS (por ahora fijas; luego las traes del API)
-                  _DrawerItem(
-                    icon: Icons.assignment_outlined,
-                    title: 'Medicion Brix Pre Cosecha',
-                    subtitle: 'Ver cartillas disponibles',
-                    onTap: () {
-                      Navigator.pop(context); // cerrar drawer
-                      context.go('/evaluaciones');
-                    },
+                  // =========================
+                  // ESTIMACIÓN (carpeta)
+                  // =========================
+                  _DrawerFolder(
+                    icon: Icons.insights_outlined,
+                    title: 'Estimación',
+                    children: [
+                      _DrawerItem(
+                        icon: Icons.assignment_outlined,
+                        title: 'Medición Brix Pre Cosecha',
+                        onTap: () {
+                          Navigator.pop(context);
+                          context.go('/estimacion/brix');
+                        },
+                      ),
+                    ],
                   ),
-                  /*
-                  _DrawerItem(
-                    icon: Icons.qr_code_scanner,
-                    title: 'Evaluación rápida',
-                    subtitle: 'Escanear / iniciar una cartilla',
-                    onTap: () {
-                      Navigator.pop(context);
-                      // ruta futura: /evaluaciones/scan o similar
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Pendiente: evaluación rápida'),
-                        ),
-                      );
-                    },
+
+                  // =========================
+                  // CALIDAD (carpeta)
+                  // =========================
+                  _DrawerFolder(
+                    icon: Icons.verified_outlined,
+                    title: 'Calidad',
+                    children: [
+                      _DrawerItem(
+                        icon: Icons.fact_check_outlined,
+                        title: 'Cartillas de Calidad',
+                        onTap: () {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Calidad (pendiente)'),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ),
-*/
+
+                  // =========================
+                  // FITOSANITARIAS (carpeta)
+                  // =========================
+                  _DrawerFolder(
+                    icon: Icons.bug_report_outlined,
+                    title: 'Evaluaciones Fitosanitarias',
+                    children: [
+                      _DrawerItem(
+                        icon: Icons.assignment_turned_in_outlined,
+                        title: 'Evaluación Fitosanitaria',
+                        onTap: () {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Fitosanitarias (pendiente)'),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+
                   const Divider(height: 28),
 
                   _DrawerItem(
                     icon: Icons.settings_outlined,
                     title: 'Ajustes',
-                    subtitle: 'Base URL',
                     onTap: () {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -204,7 +190,6 @@ class _AppDrawer extends StatelessWidget {
                   _DrawerItem(
                     icon: Icons.logout,
                     title: 'Cerrar sesión',
-                    subtitle: 'Salir de la sesion actual',
                     onTap: () {
                       Navigator.pop(context);
                       context.read<AuthBloc>().add(const AuthLogoutRequested());
@@ -228,17 +213,52 @@ class _AppDrawer extends StatelessWidget {
   }
 }
 
+class _DrawerFolder extends StatelessWidget {
+  const _DrawerFolder({
+    required this.icon,
+    required this.title,
+    required this.children,
+  });
+
+  final IconData icon;
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        initiallyExpanded: false,
+        leading: CircleAvatar(
+          backgroundColor: const Color(0xFF1B5E20).withOpacity(0.10),
+          child: Icon(icon, color: const Color(0xFF1B5E20)),
+        ),
+        // ✅ AHORA LAS CARPETAS USAN EL ESTILO “FUERTE”
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+            color: Colors.black87,
+          ),
+        ),
+        childrenPadding: const EdgeInsets.only(left: 10, right: 8, bottom: 8),
+        children: children,
+      ),
+    );
+  }
+}
+
 class _DrawerItem extends StatelessWidget {
   const _DrawerItem({
     required this.icon,
     required this.title,
-    required this.subtitle,
     required this.onTap,
   });
 
   final IconData icon;
   final String title;
-  final String subtitle;
   final VoidCallback onTap;
 
   @override
@@ -248,8 +268,15 @@ class _DrawerItem extends StatelessWidget {
         backgroundColor: const Color(0xFF1B5E20).withOpacity(0.10),
         child: Icon(icon, color: const Color(0xFF1B5E20)),
       ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-      subtitle: Text(subtitle),
+      // ✅ AHORA LOS SUBITEMS USAN EL ESTILO “DELGADO/PEQUEÑO”
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.w500,
+          fontSize: 13,
+          color: Colors.black87,
+        ),
+      ),
       onTap: onTap,
     );
   }
@@ -274,11 +301,7 @@ class _KpiCard extends StatelessWidget {
         color: Colors.white.withOpacity(0.92),
         borderRadius: BorderRadius.circular(18),
         boxShadow: const [
-          BoxShadow(
-            blurRadius: 18,
-            offset: Offset(0, 8),
-            color: Colors.black12,
-          ),
+          BoxShadow(blurRadius: 18, offset: Offset(0, 8), color: Colors.green),
         ],
         border: Border.all(color: Colors.black12),
       ),
