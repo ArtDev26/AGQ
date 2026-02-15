@@ -64,10 +64,11 @@ class _MedicionBrixPreCosechaPageState
   // Dropdowns (mock; luego conectas API)
   final List<String> _variedades = const [
     'ALLISON',
-    'RED GLOBE',
+    'TIMPSON',
     'SWEET GLOBE',
+    'TAWNY',
   ];
-  final List<String> _lotes = const ['G-6(1,2)', 'A-7(1)', 'B-2(3)'];
+  final List<String> _lotes = const ['G-6(1)', 'A-7(1)', 'B-2(3)'];
 
   String? _variedad;
   String? _lote;
@@ -114,28 +115,38 @@ class _MedicionBrixPreCosechaPageState
 
   int get _racimosDePlantaSel => _racimosPorPlanta[_plantaSel] ?? 0;
 
-  int _totalRacimosCreados() =>
-      _racimosPorPlanta.values.fold<int>(0, (a, b) => a + b);
+  int _totalRegistros() => _registroPorRacimo.length;
 
-  List<String> _faltantes() {
-    final faltan = <String>[];
+  bool _tieneCambiosSinGuardar() {
+    // Si tienes lógica real de guardado (API/DB), aquí marcas dirty.
+    // Por ahora: si hay registros, asumimos que hay algo por guardar.
+    return _registroPorRacimo.isNotEmpty;
+  }
 
-    for (int p = 1; p <= _plantas; p++) {
-      final n = _racimosPorPlanta[p] ?? 0;
-      for (int r = 1; r <= n; r++) {
-        final k = _key(p, r);
-        if (!_registroPorRacimo.containsKey(k)) {
-          faltan.add(
-            'Planta ${p.toString().padLeft(2, '0')} • Racimo ${r.toString().padLeft(2, '0')}',
-          );
-        }
+  // ✅ Validación estricta: No se puede "Guardar evaluación completa"
+  // si falta:
+  //  - Variedad y Lote
+  //  - al menos 1 racimo en alguna planta
+  //  - TODOS los racimos creados tienen registro (tamaño+color+brix)
+  bool _evaluacionCompleta() {
+    if ((_variedad ?? '').isEmpty) return false;
+    if ((_lote ?? '').isEmpty) return false;
+
+    final totalRacimos = _racimosPorPlanta.values.fold<int>(0, (a, b) => a + b);
+    if (totalRacimos <= 0) return false;
+
+    for (final entry in _racimosPorPlanta.entries) {
+      final planta = entry.key;
+      final cnt = entry.value;
+      for (int r = 1; r <= cnt; r++) {
+        if (!_registroPorRacimo.containsKey(_key(planta, r))) return false;
       }
     }
-    return faltan;
+    return true;
   }
 
   // =========================
-  // Auto-guardado (solo si está completo)
+  // Auto-guardado (solo si está completo el racimo)
   // =========================
   void _autoGuardarSiCompleto() {
     if (_racimoSel == null) return;
@@ -231,52 +242,6 @@ class _MedicionBrixPreCosechaPageState
       ),
     );
     if (ok == true) onOk();
-  }
-
-  // ✅ Confirmación para salir (volver)
-  Future<bool> _confirmSalir() async {
-    final salir = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Salir'),
-        content: const Text('¿Estás seguro que quieres salir?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('No'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Sí, salir'),
-          ),
-        ],
-      ),
-    );
-    return salir ?? false;
-  }
-
-  // ✅ Confirmación para guardar
-  Future<bool> _confirmGuardar() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Guardar evaluación'),
-        content: Text(
-          'Se guardarán ${_registroPorRacimo.length} registros.\n¿Deseas continuar?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
-    );
-    return ok ?? false;
   }
 
   // ✅ BLOQUEO: NO eliminar racimo si tiene datos guardados
@@ -409,99 +374,72 @@ class _MedicionBrixPreCosechaPageState
     });
   }
 
-  int _totalRegistros() => _registroPorRacimo.length;
-
-  // ✅ Guardar SOLO si TODO está completo (variedad, lote y TODOS los racimos creados registrados)
-  Future<void> _guardarEvaluacionCompleta() async {
-    if ((_variedad ?? '').isEmpty || (_lote ?? '').isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Seleccione Variedad y Lote antes de guardar.'),
-        ),
-      );
-      return;
-    }
-
-    final totalCreados = _totalRacimosCreados();
-    if (totalCreados == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Agregue al menos 1 racimo antes de guardar.'),
-        ),
-      );
-      return;
-    }
-
-    // (Recomendado) No permitir plantas sin racimos
-    final plantasSinRacimos = <int>[];
-    for (int p = 1; p <= _plantas; p++) {
-      if ((_racimosPorPlanta[p] ?? 0) == 0) plantasSinRacimos.add(p);
-    }
-    if (plantasSinRacimos.isNotEmpty) {
-      final txt = plantasSinRacimos
-          .map((p) => p.toString().padLeft(2, '0'))
-          .join(', ');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Hay plantas sin racimos: $txt')));
-      return;
-    }
-
-    // Validar faltantes
-    final faltan = _faltantes();
-    if (faltan.isNotEmpty) {
-      final preview = faltan.take(8).join('\n');
-      final resto = faltan.length > 8 ? '\n... y ${faltan.length - 8} más' : '';
-
-      showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Faltan registros'),
-          content: Text('No se puede guardar.\n\nFaltan:\n$preview$resto'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    final ok = await _confirmGuardar();
-    if (!ok) return;
-
-    // Payload ejemplo (para tu API)
-    final payload = {
-      "variedad": _variedad,
-      "lote": _lote,
-      "fecha": DateTime.now().toIso8601String(),
-      "plantas": _plantas,
-      "totalRacimos": totalCreados,
-      "detalle": _registroPorRacimo.values
-          .map(
-            (r) => {
-              "planta": r.planta,
-              "racimo": r.nroRacimo,
-              "tamano": r.tamano,
-              "color": r.color,
-              "brix": r.brix,
-              "fecha": r.fecha.toIso8601String(),
-            },
-          )
-          .toList(),
-    };
-
-    // TODO: Aquí conectas tu API/DB
-    // await api.save(payload);
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Guardado OK (${payload["totalRacimos"]} racimos).'),
+  // =========================
+  // SALIR / VOLVER (go_router safe)
+  // =========================
+  Future<bool> _confirmSalir() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Salir'),
+        content: const Text('¿Estás seguro que quieres salir?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sí, salir'),
+          ),
+        ],
       ),
     );
+    return ok ?? false;
+  }
+
+  void _volverHomeSeguro() async {
+    final ok = await _confirmSalir();
+    if (!ok) return;
+    if (!mounted) return;
+
+    // ✅ go_router: si hay backstack, pop; si no, ir a home
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/home'); // <-- cambia si tu ruta real es otra
+    }
+  }
+
+  // =========================
+  // GUARDAR EVALUACIÓN COMPLETA
+  // =========================
+  Future<void> _guardarEvaluacionCompleta() async {
+    // ✅ Bloquea si NO está completa
+    if (!_evaluacionCompleta()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No puedes guardar: completa Variedad/Lote y registra TODOS los racimos (tamaño, color y brix).',
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Aquí llamas tu API/DB.
+    // Por ahora: solo confirmación visual.
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Evaluación guardada. Total: ${_totalRegistros()} racimos.',
+        ),
+      ),
+    );
+
+    // Si quieres volver al home después de guardar:
+    // if (!mounted) return;
+    // context.go('/home');
   }
 
   // =========================
@@ -511,8 +449,12 @@ class _MedicionBrixPreCosechaPageState
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width >= 900;
 
-    return WillPopScope(
-      onWillPop: () async => await _confirmSalir(),
+    return PopScope(
+      canPop: false, // ✅ intercepta botón físico
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        _volverHomeSeguro();
+      },
       child: Scaffold(
         appBar: AppBar(
           toolbarHeight: 48,
@@ -524,34 +466,12 @@ class _MedicionBrixPreCosechaPageState
               fontSize: 14,
               fontWeight: FontWeight.w800,
               letterSpacing: 0.3,
-              color: Colors.white,
             ),
           ),
           elevation: 0,
+          backgroundColor: const Color(0xFF1B5E20),
           foregroundColor: Colors.white,
-          backgroundColor: Colors.transparent,
-          surfaceTintColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          scrolledUnderElevation: 0,
-          flexibleSpace: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF0B3D2E),
-                  Color(0xFF1B5E20),
-                  Color(0xFF43A047),
-                ],
-              ),
-            ),
-          ),
           actions: [
-            IconButton(
-              tooltip: 'Guardar',
-              onPressed: _guardarEvaluacionCompleta,
-              icon: const Icon(Icons.save_outlined, size: 20),
-            ),
             IconButton(
               tooltip: 'Limpiar',
               onPressed: _limpiarTodo,
@@ -566,7 +486,11 @@ class _MedicionBrixPreCosechaPageState
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0xFF0B3D2E), Color(0xFF1B5E20), Color(0xFF43A047)],
+              colors: [
+                Color(0xFF0B3D2E), // verde oscuro
+                Color(0xFF1B5E20), // verde medio
+                Color(0xFF43A047), // verde claro
+              ],
             ),
           ),
           child: SafeArea(
@@ -591,6 +515,9 @@ class _MedicionBrixPreCosechaPageState
                               _leftPanel(),
                               const SizedBox(height: 16),
                               _rightPanel(),
+                              const SizedBox(
+                                height: 100,
+                              ), // espacio por botones
                             ],
                           ),
                   ),
@@ -600,48 +527,28 @@ class _MedicionBrixPreCosechaPageState
           ),
         ),
 
-        // ✅ BOTONES ARRIBA de los botones del celular (SafeArea)
+        // ✅ BOTONES MÁS ARRIBA (y no chocan con barra del celular)
         bottomNavigationBar: SafeArea(
           top: false,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.92),
-              border: const Border(top: BorderSide(color: Colors.black12)),
-              boxShadow: const [
-                BoxShadow(
-                  blurRadius: 16,
-                  offset: Offset(0, -6),
-                  color: Colors.black12,
+          minimum: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _volverHomeSeguro,
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('Volver'),
                 ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final ok = await _confirmSalir();
-                      if (!ok) return;
-
-                      if (!mounted) return;
-
-                      Navigator.of(context).pop(); // ✅ SOLO ESTO
-                    },
-                    icon: const Icon(Icons.arrow_back),
-                    label: const Text('Volver'),
-                  ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _guardarEvaluacionCompleta,
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('Guardar'),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _guardarEvaluacionCompleta,
-                    icon: const Icon(Icons.save_outlined),
-                    label: const Text('Guardar'),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -704,7 +611,7 @@ class _MedicionBrixPreCosechaPageState
                   title: 'Plantas',
                   value: _plantas,
                   onPlus: _incPlantas,
-                  color: const Color(0xFF2E7D32),
+                  color: const Color(0xFF2E7D32), // verde
                 ),
               ),
               const SizedBox(width: 12),
@@ -713,7 +620,7 @@ class _MedicionBrixPreCosechaPageState
                   title: 'Racimos',
                   value: _racimosDePlantaSel,
                   onPlus: _addRacimoToPlantaSel,
-                  color: const Color(0xFF1E88E5),
+                  color: const Color(0xFF1E88E5), // azul de botón 01
                 ),
               ),
             ],
@@ -766,8 +673,8 @@ class _MedicionBrixPreCosechaPageState
         return ElevatedButton(
           style: ElevatedButton.styleFrom(
             backgroundColor: sel
-                ? const Color(0xFF2E7D32)
-                : const Color(0xFF43A047),
+                ? const Color(0xFF43A047)
+                : const Color(0xFF9E9E9E),
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             shape: RoundedRectangleBorder(
@@ -801,7 +708,7 @@ class _MedicionBrixPreCosechaPageState
         final hasReg = _registroPorRacimo.containsKey(k);
         final selected = _racimoSel == r;
 
-        final bg = selected ? const Color(0xFF0D47A1) : const Color(0xFF1E88E5);
+        final bg = selected ? const Color(0xFF1E88E5) : const Color(0xFF9E9E9E);
 
         return ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
@@ -840,7 +747,20 @@ class _MedicionBrixPreCosechaPageState
             text: _racimoSel == null
                 ? 'Planta ${_plantaSel.toString().padLeft(2, '0')} • Seleccione un Racimo'
                 : 'Planta ${_plantaSel.toString().padLeft(2, '0')} • Racimo ${_racimoSel!.toString().padLeft(2, '0')}',
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFFFFE082), // ámbar claro
+                Color(0xFFFFC107), // ámbar
+                Color(0xFFFFB300), // ámbar oscuro
+              ],
+            ),
+            textColor: const Color(
+              0xFF3E2723,
+            ), // café oscuro para que se lea bien
           ),
+
           const SizedBox(height: 12),
 
           const _FieldLabel(text: 'Tamaño', required: true),
@@ -1012,8 +932,15 @@ class _FieldLabel extends StatelessWidget {
 }
 
 class _InfoPill extends StatelessWidget {
-  const _InfoPill({required this.text});
+  const _InfoPill({
+    required this.text,
+    this.gradient,
+    this.textColor = Colors.black87,
+  });
+
   final String text;
+  final Gradient? gradient;
+  final Color textColor;
 
   @override
   Widget build(BuildContext context) {
@@ -1023,16 +950,17 @@ class _InfoPill extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.black12),
-        color: Colors.white.withOpacity(0.85),
+        gradient: gradient,
+        color: gradient == null ? Colors.white.withOpacity(0.85) : null,
       ),
-      child: Text(text, style: const TextStyle(fontWeight: FontWeight.w800)),
+      child: Text(
+        text,
+        style: TextStyle(fontWeight: FontWeight.w800, color: textColor),
+      ),
     );
   }
 }
 
-/* =========================
-   Header cards (Plantas / Racimos)
-========================= */
 class _HeaderCounterCard extends StatelessWidget {
   const _HeaderCounterCard({
     required this.title,
@@ -1085,9 +1013,6 @@ class _HeaderCounterCard extends StatelessWidget {
   }
 }
 
-/* =========================
-   ScrollBox para Plantas/Racimos
-========================= */
 class _ScrollBox extends StatelessWidget {
   const _ScrollBox({
     required this.height,
@@ -1121,9 +1046,6 @@ class _ScrollBox extends StatelessWidget {
   }
 }
 
-/* =========================
-   Chips en filas (sin icono)
-========================= */
 class _ChoiceChips extends StatelessWidget {
   const _ChoiceChips({
     required this.options,
@@ -1191,9 +1113,6 @@ class _ChoiceChips extends StatelessWidget {
   }
 }
 
-/* =========================
-   Resumen GLOBAL: total, promedio y conteos
-========================= */
 class _ResumenGlobal extends StatelessWidget {
   const _ResumenGlobal({required this.registros});
 
@@ -1269,9 +1188,6 @@ class _ResumenGlobal extends StatelessWidget {
   }
 }
 
-/* =========================
-   Input formatter: coma -> punto
-========================= */
 class _CommaToDotFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
