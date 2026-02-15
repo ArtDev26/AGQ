@@ -37,6 +37,8 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
+    // ✅ Carga Base URL guardada (persistente)
+    ApiConfig.load();
     _loadRememberedCreds();
   }
 
@@ -109,6 +111,14 @@ class _LoginPageState extends State<LoginPage> {
                 keyboardType: TextInputType.url,
                 decoration: const InputDecoration(border: OutlineInputBorder()),
               ),
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Actual: ${ApiConfig.currentBaseUrl}',
+                  style: const TextStyle(color: Colors.black54, fontSize: 12),
+                ),
+              ),
             ],
           ),
           actions: [
@@ -116,9 +126,28 @@ class _LoginPageState extends State<LoginPage> {
               onPressed: () => Navigator.of(ctx).pop(),
               child: const Text('Cancelar'),
             ),
+            TextButton(
+              onPressed: () async {
+                // (Opcional) reset default
+                await ApiConfig.resetToDefault();
+                if (!context.mounted) return;
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'API restaurada: ${ApiConfig.currentBaseUrl}',
+                    ),
+                  ),
+                );
+
+                Navigator.of(ctx).pop();
+              },
+              child: const Text('Restaurar'),
+            ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 final v = ctrl.text.trim();
+
                 if (v.isEmpty || !v.startsWith('http')) {
                   ScaffoldMessenger.of(
                     context,
@@ -126,7 +155,10 @@ class _LoginPageState extends State<LoginPage> {
                   return;
                 }
 
-                ApiConfig.baseUrl.value = v;
+                // ✅ GUARDA PERSISTENTE + ACTUALIZA MEMORIA
+                await ApiConfig.save(v);
+
+                if (!context.mounted) return;
 
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -149,7 +181,7 @@ class _LoginPageState extends State<LoginPage> {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) async {
         if (state is AuthAuthenticated) {
-          // ✅ Guarda usuario + contraseña si está activado el check
+          // Guarda usuario + contraseña si está activado el check
           await _persistRememberedCredsIfNeeded();
           if (!context.mounted) return;
           context.go('/home');
@@ -269,7 +301,6 @@ class _LoginCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-
             TextFormField(
               controller: usuarioCtrl,
               textInputAction: TextInputAction.next,
@@ -281,8 +312,7 @@ class _LoginCard extends StatelessWidget {
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? 'Ingrese usuario' : null,
             ),
-            const SizedBox(height: 12),
-
+            const SizedBox(height: 15),
             TextFormField(
               controller: passCtrl,
               obscureText: hidePass,
@@ -302,10 +332,8 @@ class _LoginCard extends StatelessWidget {
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? 'Ingrese contraseña' : null,
             ),
-
             const SizedBox(height: 10),
 
-            // ✅ Checkbox a la izquierda
             Align(
               alignment: Alignment.centerLeft,
               child: Padding(
@@ -363,7 +391,7 @@ class _LoginCard extends StatelessWidget {
             const SizedBox(height: 10),
 
             const Text(
-              'AGQ • Evaluar. Medir. Mejorar.',
+              'AGG • Evaluar. Medir. Mejorar.',
               style: TextStyle(color: Colors.black45),
             ),
           ],
@@ -399,16 +427,58 @@ class _HeaderAGQ extends StatelessWidget {
               ),
             ),
           ),
-          Center(
+          Align(
+            alignment: Alignment.topCenter,
             child: Padding(
-              padding: const EdgeInsets.only(bottom: 36),
-              child: Text(
-                'AGQ',
-                style: TextStyle(
-                  fontSize: 84,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 4,
-                  color: Colors.white.withOpacity(0.95),
+              padding: const EdgeInsets.only(top: 30),
+              child: SizedBox(
+                width: 170,
+                height: 170,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: 170,
+                      height: 170,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withOpacity(0.20),
+                      ),
+                    ),
+                    Container(
+                      width: 135,
+                      height: 135,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [Color(0xFF4CAF50), Color(0xFF1B5E20)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Image.asset(
+                          "assets/images/agrokasa_logo_blanco.png",
+                          width: 50,
+                          height: 50,
+                          fit: BoxFit.contain,
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          "AGROGEST",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 2.5,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -442,7 +512,7 @@ class _HeaderAGQ extends StatelessWidget {
           Align(
             alignment: Alignment.bottomCenter,
             child: Container(
-              height: 44,
+              height: 90,
               decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(28)),

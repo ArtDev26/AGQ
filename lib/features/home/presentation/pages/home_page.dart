@@ -13,11 +13,33 @@ class HomePage extends StatelessWidget {
     return Scaffold(
       drawer: const _AppDrawer(),
       appBar: AppBar(
-        title: const Text('AGQ'),
+        title: const Text(
+          'AGROGEST',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        ),
+
+        // ✅ Clave para Material 3 (evita que se ponga blanco)
+        forceMaterialTransparency: true,
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
         elevation: 0,
-        backgroundColor: const Color(0xFFF6F3FA),
-        foregroundColor: Colors.black87,
+        scrolledUnderElevation: 0,
+
+        iconTheme: const IconThemeData(color: Colors.white),
+        actionsIconTheme: const IconThemeData(color: Colors.white),
+
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF0B3D2E), Color(0xFF1B5E20), Color(0xFF43A047)],
+            ),
+          ),
+        ),
       ),
+
       body: Container(
         width: double.infinity,
         decoration: const BoxDecoration(
@@ -79,19 +101,16 @@ class _AppDrawer extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'AGQ',
+                    'AGROGEST',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 30,
+                      fontSize: 20,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 2,
                     ),
                   ),
                   SizedBox(height: 6),
-                  Text(
-                    'Evaluaciones Calidad',
-                    style: TextStyle(color: Colors.white70),
-                  ),
+                  Text('Evaluaciones', style: TextStyle(color: Colors.white70)),
                 ],
               ),
             ),
@@ -202,7 +221,7 @@ class _AppDrawer extends StatelessWidget {
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 10, 16, 16),
               child: Text(
-                'AGQ • Evaluar. Medir. Mejorar.',
+                'AGG • Evaluar. Medir. Mejorar.',
                 style: TextStyle(color: Colors.black45),
               ),
             ),

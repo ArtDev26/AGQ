@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 
 class MedicionBrixPreCosechaPage extends StatefulWidget {
   const MedicionBrixPreCosechaPage({super.key});
@@ -113,8 +114,28 @@ class _MedicionBrixPreCosechaPageState
 
   int get _racimosDePlantaSel => _racimosPorPlanta[_plantaSel] ?? 0;
 
+  int _totalRacimosCreados() =>
+      _racimosPorPlanta.values.fold<int>(0, (a, b) => a + b);
+
+  List<String> _faltantes() {
+    final faltan = <String>[];
+
+    for (int p = 1; p <= _plantas; p++) {
+      final n = _racimosPorPlanta[p] ?? 0;
+      for (int r = 1; r <= n; r++) {
+        final k = _key(p, r);
+        if (!_registroPorRacimo.containsKey(k)) {
+          faltan.add(
+            'Planta ${p.toString().padLeft(2, '0')} • Racimo ${r.toString().padLeft(2, '0')}',
+          );
+        }
+      }
+    }
+    return faltan;
+  }
+
   // =========================
-  // Auto-guardado
+  // Auto-guardado (solo si está completo)
   // =========================
   void _autoGuardarSiCompleto() {
     if (_racimoSel == null) return;
@@ -212,8 +233,68 @@ class _MedicionBrixPreCosechaPageState
     if (ok == true) onOk();
   }
 
-  // Long press: eliminar racimo específico (reindexa)
+  // ✅ Confirmación para salir (volver)
+  Future<bool> _confirmSalir() async {
+    final salir = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Salir'),
+        content: const Text('¿Estás seguro que quieres salir?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Sí, salir'),
+          ),
+        ],
+      ),
+    );
+    return salir ?? false;
+  }
+
+  // ✅ Confirmación para guardar
+  Future<bool> _confirmGuardar() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Guardar evaluación'),
+        content: Text(
+          'Se guardarán ${_registroPorRacimo.length} registros.\n¿Deseas continuar?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
+  // ✅ BLOQUEO: NO eliminar racimo si tiene datos guardados
   void _eliminarRacimo(int r) {
+    final k = _key(_plantaSel, r);
+    final tieneRegistro = _registroPorRacimo.containsKey(k);
+
+    if (tieneRegistro) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No puedes eliminar: ese racimo ya tiene datos guardados.',
+          ),
+        ),
+      );
+      return;
+    }
+
     _confirmEliminar(
       titulo: 'Eliminar Racimo',
       mensaje:
@@ -223,8 +304,7 @@ class _MedicionBrixPreCosechaPageState
           final total = _racimosPorPlanta[_plantaSel] ?? 0;
           if (r < 1 || r > total) return;
 
-          _registroPorRacimo.remove(_key(_plantaSel, r));
-
+          // reindexar (seguro)
           for (int i = r + 1; i <= total; i++) {
             final oldK = _key(_plantaSel, i);
             final newK = _key(_plantaSel, i - 1);
@@ -251,21 +331,34 @@ class _MedicionBrixPreCosechaPageState
     );
   }
 
-  // Long press: eliminar planta específica (reindexa plantas y registros)
+  // ✅ BLOQUEO: NO eliminar planta si tiene algún racimo con datos guardados
   void _eliminarPlanta(int p) {
     if (_plantas <= 1) return;
+
+    final tieneDatos = _registroPorRacimo.values.any((r) => r.planta == p);
+    if (tieneDatos) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No puedes eliminar: esa planta tiene racimos con datos guardados.',
+          ),
+        ),
+      );
+      return;
+    }
 
     _confirmEliminar(
       titulo: 'Eliminar Planta',
       mensaje:
-          '¿Eliminar ${p.toString().padLeft(2, '0')}? Se eliminarán sus racimos y registros.',
+          '¿Eliminar ${p.toString().padLeft(2, '0')}? (No tiene datos guardados)',
       onOk: () {
         setState(() {
           if (p < 1 || p > _plantas) return;
 
           _racimosPorPlanta.remove(p);
-          _registroPorRacimo.removeWhere((k, v) => k.startsWith('$p-'));
+          _registroPorRacimo.removeWhere((k, v) => v.planta == p);
 
+          // reindex plantas hacia abajo
           for (int pl = p + 1; pl <= _plantas; pl++) {
             final cnt = _racimosPorPlanta.remove(pl) ?? 0;
             _racimosPorPlanta[pl - 1] = cnt;
@@ -318,6 +411,99 @@ class _MedicionBrixPreCosechaPageState
 
   int _totalRegistros() => _registroPorRacimo.length;
 
+  // ✅ Guardar SOLO si TODO está completo (variedad, lote y TODOS los racimos creados registrados)
+  Future<void> _guardarEvaluacionCompleta() async {
+    if ((_variedad ?? '').isEmpty || (_lote ?? '').isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Seleccione Variedad y Lote antes de guardar.'),
+        ),
+      );
+      return;
+    }
+
+    final totalCreados = _totalRacimosCreados();
+    if (totalCreados == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Agregue al menos 1 racimo antes de guardar.'),
+        ),
+      );
+      return;
+    }
+
+    // (Recomendado) No permitir plantas sin racimos
+    final plantasSinRacimos = <int>[];
+    for (int p = 1; p <= _plantas; p++) {
+      if ((_racimosPorPlanta[p] ?? 0) == 0) plantasSinRacimos.add(p);
+    }
+    if (plantasSinRacimos.isNotEmpty) {
+      final txt = plantasSinRacimos
+          .map((p) => p.toString().padLeft(2, '0'))
+          .join(', ');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Hay plantas sin racimos: $txt')));
+      return;
+    }
+
+    // Validar faltantes
+    final faltan = _faltantes();
+    if (faltan.isNotEmpty) {
+      final preview = faltan.take(8).join('\n');
+      final resto = faltan.length > 8 ? '\n... y ${faltan.length - 8} más' : '';
+
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Faltan registros'),
+          content: Text('No se puede guardar.\n\nFaltan:\n$preview$resto'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final ok = await _confirmGuardar();
+    if (!ok) return;
+
+    // Payload ejemplo (para tu API)
+    final payload = {
+      "variedad": _variedad,
+      "lote": _lote,
+      "fecha": DateTime.now().toIso8601String(),
+      "plantas": _plantas,
+      "totalRacimos": totalCreados,
+      "detalle": _registroPorRacimo.values
+          .map(
+            (r) => {
+              "planta": r.planta,
+              "racimo": r.nroRacimo,
+              "tamano": r.tamano,
+              "color": r.color,
+              "brix": r.brix,
+              "fecha": r.fecha.toIso8601String(),
+            },
+          )
+          .toList(),
+    };
+
+    // TODO: Aquí conectas tu API/DB
+    // await api.save(payload);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Guardado OK (${payload["totalRacimos"]} racimos).'),
+      ),
+    );
+  }
+
   // =========================
   // UI
   // =========================
@@ -325,71 +511,138 @@ class _MedicionBrixPreCosechaPageState
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width >= 900;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('MEDICIÓN BRIX PRE - COSECHA'),
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        actions: [
-          IconButton(
-            tooltip: 'Limpiar',
-            onPressed: _limpiarTodo,
-            icon: const Icon(Icons.refresh),
+    return WillPopScope(
+      onWillPop: () async => await _confirmSalir(),
+      child: Scaffold(
+        appBar: AppBar(
+          toolbarHeight: 48,
+          centerTitle: true,
+          titleSpacing: 12,
+          title: const Text(
+            'MEDICIÓN BRIX PRE - COSECHA',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.3,
+              color: Colors.white,
+            ),
           ),
-        ],
-      ),
-      body: Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFF6F3FA), Color(0xFFEEF6F0)],
+          elevation: 0,
+          foregroundColor: Colors.white,
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          scrolledUnderElevation: 0,
+          flexibleSpace: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF0B3D2E),
+                  Color(0xFF1B5E20),
+                  Color(0xFF43A047),
+                ],
+              ),
+            ),
           ),
+          actions: [
+            IconButton(
+              tooltip: 'Guardar',
+              onPressed: _guardarEvaluacionCompleta,
+              icon: const Icon(Icons.save_outlined, size: 20),
+            ),
+            IconButton(
+              tooltip: 'Limpiar',
+              onPressed: _limpiarTodo,
+              icon: const Icon(Icons.refresh, size: 20),
+            ),
+            const SizedBox(width: 6),
+          ],
         ),
-        child: SafeArea(
-          child: Form(
-            key: _formKey,
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1100),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: isWide
-                      ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(flex: 5, child: _leftPanel()),
-                            const SizedBox(width: 16),
-                            Expanded(flex: 4, child: _rightPanel()),
-                          ],
-                        )
-                      : ListView(
-                          children: [
-                            _leftPanel(),
-                            const SizedBox(height: 16),
-                            _rightPanel(),
-                          ],
-                        ),
+        body: Container(
+          width: double.infinity,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF0B3D2E), Color(0xFF1B5E20), Color(0xFF43A047)],
+            ),
+          ),
+          child: SafeArea(
+            child: Form(
+              key: _formKey,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1100),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: isWide
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(flex: 5, child: _leftPanel()),
+                              const SizedBox(width: 16),
+                              Expanded(flex: 4, child: _rightPanel()),
+                            ],
+                          )
+                        : ListView(
+                            children: [
+                              _leftPanel(),
+                              const SizedBox(height: 16),
+                              _rightPanel(),
+                            ],
+                          ),
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-        child: Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back),
-                label: const Text('Volver'),
-              ),
+
+        // ✅ BOTONES ARRIBA de los botones del celular (SafeArea)
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.92),
+              border: const Border(top: BorderSide(color: Colors.black12)),
+              boxShadow: const [
+                BoxShadow(
+                  blurRadius: 16,
+                  offset: Offset(0, -6),
+                  color: Colors.black12,
+                ),
+              ],
             ),
-          ],
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final ok = await _confirmSalir();
+                      if (!ok) return;
+
+                      if (!mounted) return;
+
+                      Navigator.of(context).pop(); // ✅ SOLO ESTO
+                    },
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('Volver'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _guardarEvaluacionCompleta,
+                    icon: const Icon(Icons.save_outlined),
+                    label: const Text('Guardar'),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -444,7 +697,6 @@ class _MedicionBrixPreCosechaPageState
           const Divider(),
           const SizedBox(height: 14),
 
-          // ✅ EXACTO COMO TU IMAGEN: 2 tarjetas arriba (Plantas / Racimos)
           Row(
             children: [
               Expanded(
@@ -452,6 +704,7 @@ class _MedicionBrixPreCosechaPageState
                   title: 'Plantas',
                   value: _plantas,
                   onPlus: _incPlantas,
+                  color: const Color(0xFF2E7D32),
                 ),
               ),
               const SizedBox(width: 12),
@@ -460,6 +713,7 @@ class _MedicionBrixPreCosechaPageState
                   title: 'Racimos',
                   value: _racimosDePlantaSel,
                   onPlus: _addRacimoToPlantaSel,
+                  color: const Color(0xFF1E88E5),
                 ),
               ),
             ],
@@ -467,7 +721,6 @@ class _MedicionBrixPreCosechaPageState
 
           const SizedBox(height: 12),
 
-          // ✅ CUADROS ABAJO (Plantas / Racimos) con scroll
           LayoutBuilder(
             builder: (context, c) {
               final double boxH = c.maxWidth < 420 ? 220 : 180;
@@ -502,7 +755,6 @@ class _MedicionBrixPreCosechaPageState
     );
   }
 
-  // ✅ Botones SOLO 01, 02...
   Widget _plantasGrid() {
     return Wrap(
       spacing: 10,
@@ -530,7 +782,6 @@ class _MedicionBrixPreCosechaPageState
     );
   }
 
-  // ✅ Botones SOLO 01, 02...
   Widget _racimosGrid() {
     final n = _racimosDePlantaSel;
 
@@ -592,7 +843,6 @@ class _MedicionBrixPreCosechaPageState
           ),
           const SizedBox(height: 12),
 
-          // ✅ Tamaño en 1 fila (sin ícono)
           const _FieldLabel(text: 'Tamaño', required: true),
           const SizedBox(height: 8),
           _ChoiceChips(
@@ -607,7 +857,6 @@ class _MedicionBrixPreCosechaPageState
 
           const SizedBox(height: 16),
 
-          // ✅ Color en 2 filas (sin ícono)
           const _FieldLabel(text: 'Color', required: true),
           const SizedBox(height: 8),
           _ChoiceChips(
@@ -622,7 +871,6 @@ class _MedicionBrixPreCosechaPageState
 
           const SizedBox(height: 16),
 
-          // Brix (auto-guardado al escribir)
           const _FieldLabel(text: 'Grado Brix', required: true),
           const SizedBox(height: 8),
           TextFormField(
@@ -637,9 +885,7 @@ class _MedicionBrixPreCosechaPageState
             onChanged: (_) => _autoGuardarSiCompleto(),
             decoration: _inputDecoration(
               prefix: Icons.science_outlined,
-              hint: 'Ej: 18.25',
-              helper:
-                  'Auto-guardado: se guarda al completar Tamaño/Color/Brix.',
+              hint: 'Grado Brix',
             ),
           ),
 
@@ -647,11 +893,7 @@ class _MedicionBrixPreCosechaPageState
           const Divider(),
           const SizedBox(height: 8),
 
-          _ResumenPorPlanta(
-            plantaSel: _plantaSel,
-            racimosCount: _racimosDePlantaSel,
-            registros: _registroPorRacimo,
-          ),
+          _ResumenGlobal(registros: _registroPorRacimo),
         ],
       ),
     );
@@ -789,18 +1031,20 @@ class _InfoPill extends StatelessWidget {
 }
 
 /* =========================
-   Header cards (Plantas / Racimos) como screenshot
+   Header cards (Plantas / Racimos)
 ========================= */
 class _HeaderCounterCard extends StatelessWidget {
   const _HeaderCounterCard({
     required this.title,
     required this.value,
     required this.onPlus,
+    required this.color,
   });
 
   final String title;
   final int value;
   final VoidCallback onPlus;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -809,19 +1053,23 @@ class _HeaderCounterCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.black12),
-        color: Colors.white.withOpacity(0.92),
+        color: color.withOpacity(0.12),
       ),
       child: Row(
         children: [
           Expanded(
             child: Text(
               title,
-              style: const TextStyle(fontWeight: FontWeight.w800),
+              style: TextStyle(fontWeight: FontWeight.w800, color: color),
             ),
           ),
           Text(
             '$value',
-            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+              color: color,
+            ),
           ),
           const SizedBox(width: 10),
           IconButton(
@@ -829,11 +1077,7 @@ class _HeaderCounterCard extends StatelessWidget {
             padding: EdgeInsets.zero,
             visualDensity: VisualDensity.compact,
             onPressed: onPlus,
-            icon: const Icon(
-              Icons.add_circle,
-              size: 22,
-              color: Color(0xFF1B5E20),
-            ),
+            icon: Icon(Icons.add_circle, size: 22, color: color),
           ),
         ],
       ),
@@ -938,9 +1182,7 @@ class _ChoiceChips extends StatelessWidget {
               ),
             );
 
-            if (chipW != null) {
-              return SizedBox(width: chipW, child: chip);
-            }
+            if (chipW != null) return SizedBox(width: chipW, child: chip);
             return chip;
           }).toList(),
         );
@@ -950,44 +1192,78 @@ class _ChoiceChips extends StatelessWidget {
 }
 
 /* =========================
-   Resumen simple por planta seleccionada
+   Resumen GLOBAL: total, promedio y conteos
 ========================= */
-class _ResumenPorPlanta extends StatelessWidget {
-  const _ResumenPorPlanta({
-    required this.plantaSel,
-    required this.racimosCount,
-    required this.registros,
-  });
+class _ResumenGlobal extends StatelessWidget {
+  const _ResumenGlobal({required this.registros});
 
-  final int plantaSel;
-  final int racimosCount;
   final Map<String, RacimoRegistro> registros;
-
-  String _key(int planta, int racimo) => '$planta-$racimo';
 
   @override
   Widget build(BuildContext context) {
-    int guardados = 0;
-    for (int r = 1; r <= racimosCount; r++) {
-      if (registros.containsKey(_key(plantaSel, r))) guardados++;
+    final total = registros.length;
+
+    double sumaBrix = 0;
+    final Map<String, int> countTam = {};
+    final Map<String, int> countCol = {};
+
+    for (final r in registros.values) {
+      sumaBrix += r.brix;
+      countTam[r.tamano] = (countTam[r.tamano] ?? 0) + 1;
+      countCol[r.color] = (countCol[r.color] ?? 0) + 1;
+    }
+
+    final promBrix = total == 0 ? 0 : (sumaBrix / total);
+
+    Widget chips(Map<String, int> m) {
+      final entries = m.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
+      if (entries.isEmpty) {
+        return const Text('-', style: TextStyle(color: Colors.black54));
+      }
+
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: entries.map((e) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.black12),
+              color: Colors.white.withOpacity(0.85),
+            ),
+            child: Text(
+              '${e.key}: ${e.value}',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          );
+        }).toList(),
+      );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Resumen Planta ${plantaSel.toString().padLeft(2, '0')}',
-          style: const TextStyle(fontWeight: FontWeight.w900),
-        ),
-        const SizedBox(height: 6),
-        Text('Racimos creados: $racimosCount'),
-        Text('Racimos con registro guardado: $guardados'),
-        if (racimosCount > 0) Text('Pendientes: ${racimosCount - guardados}'),
-        const SizedBox(height: 6),
+        const Text('Resumen', style: TextStyle(fontWeight: FontWeight.w900)),
+        const SizedBox(height: 8),
+        Text('Total Racimos: $total'),
+        Text('Promedio Brix: ${promBrix.toStringAsFixed(2)}'),
+        const SizedBox(height: 14),
         const Text(
-          'Tip: Mantén presionado Planta/Racimo para eliminar.',
-          style: TextStyle(color: Colors.black54),
+          'Conteo por Tamaño',
+          style: TextStyle(fontWeight: FontWeight.w900),
         ),
+        const SizedBox(height: 8),
+        chips(countTam),
+        const SizedBox(height: 14),
+        const Text(
+          'Conteo por Color',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 8),
+        chips(countCol),
       ],
     );
   }
