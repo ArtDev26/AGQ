@@ -14,7 +14,6 @@ GoRouter buildRouter(AuthBloc authBloc) {
     initialLocation: '/login',
     refreshListenable: GoRouterRefreshStream(authBloc.stream),
 
-    // ✅ REDIRECT SEGÚN AUTH
     redirect: (context, state) {
       final authState = authBloc.state;
       final isLoggingIn = state.matchedLocation == '/login';
@@ -22,13 +21,10 @@ GoRouter buildRouter(AuthBloc authBloc) {
       final isAuthed = authState is AuthAuthenticated;
       final isLoading = authState is AuthLoading;
 
-      // Mientras carga, no redirigir (evita loops)
       if (isLoading) return null;
 
-      // Si ya está autenticado y está en /login => mandarlo a /home
       if (isAuthed && isLoggingIn) return '/home';
 
-      // Si NO está autenticado y quiere ir a otra ruta => mandarlo a /login
       if (!isAuthed && !isLoggingIn) return '/login';
 
       return null;
@@ -41,9 +37,6 @@ GoRouter buildRouter(AuthBloc authBloc) {
         path: '/estimacion/brix',
         builder: (context, state) => const MedicionBrixPreCosechaPage(),
       ),
-
-      // Luego agregas:
-      // GoRoute(path: '/evaluaciones', builder: ...),
     ],
   );
 }

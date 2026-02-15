@@ -23,14 +23,11 @@ class _LoginPageState extends State<LoginPage> {
 
   bool _hidePass = true;
 
-  // ✅ Recordar usuario + contraseña
   bool _rememberCreds = false;
 
-  // SharedPreferences keys
   static const _kRememberCreds = 'remember_creds';
   static const _kRememberedUsername = 'remembered_username';
 
-  // Secure storage keys
   static const _kRememberedPassword = 'remembered_password';
   static const _secure = FlutterSecureStorage();
 
@@ -149,7 +146,6 @@ class _LoginPageState extends State<LoginPage> {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) async {
         if (state is AuthAuthenticated) {
-          // Guarda usuario + contraseña si está activado el check
           await _persistRememberedCredsIfNeeded();
           if (!context.mounted) return;
           context.go('/home');
@@ -305,7 +301,6 @@ class _LoginCard extends StatelessWidget {
 
             const SizedBox(height: 10),
 
-            // ✅ Checkbox a la izquierda
             Align(
               alignment: Alignment.centerLeft,
               child: Padding(

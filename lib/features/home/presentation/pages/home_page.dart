@@ -18,7 +18,6 @@ class HomePage extends StatelessWidget {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
         ),
 
-        // ✅ Clave para Material 3 (evita que se ponga blanco)
         forceMaterialTransparency: true,
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
@@ -82,7 +81,6 @@ class _AppDrawer extends StatelessWidget {
       child: SafeArea(
         child: Column(
           children: [
-            // Header del Drawer
             Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
@@ -115,7 +113,6 @@ class _AppDrawer extends StatelessWidget {
               ),
             ),
 
-            // Opciones
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.only(top: 8),
@@ -253,7 +250,7 @@ class _DrawerFolder extends StatelessWidget {
           backgroundColor: const Color(0xFF1B5E20).withOpacity(0.10),
           child: Icon(icon, color: const Color(0xFF1B5E20)),
         ),
-        // ✅ AHORA LAS CARPETAS USAN EL ESTILO “FUERTE”
+
         title: Text(
           title,
           style: const TextStyle(
@@ -287,7 +284,7 @@ class _DrawerItem extends StatelessWidget {
         backgroundColor: const Color(0xFF1B5E20).withOpacity(0.10),
         child: Icon(icon, color: const Color(0xFF1B5E20)),
       ),
-      // ✅ AHORA LOS SUBITEMS USAN EL ESTILO “DELGADO/PEQUEÑO”
+
       title: Text(
         title,
         style: const TextStyle(

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/auth/credentials_storage.dart';
+import '../../data/brix_api.dart';
+
 class MedicionBrixPreCosechaPage extends StatefulWidget {
   const MedicionBrixPreCosechaPage({super.key});
 
@@ -10,12 +13,9 @@ class MedicionBrixPreCosechaPage extends StatefulWidget {
       _MedicionBrixPreCosechaPageState();
 }
 
-/* =========================
-   Modelo: 1 registro por racimo
-========================= */
 class RacimoRegistro {
-  final int planta; // 1..N
-  final int nroRacimo; // correlativo dentro de la planta
+  final int planta;
+  final int nroRacimo;
   final String variedad;
   final String lote;
   final String tamano;
@@ -61,12 +61,15 @@ class _MedicionBrixPreCosechaPageState
     extends State<MedicionBrixPreCosechaPage> {
   final _formKey = GlobalKey<FormState>();
 
-  // Dropdowns (mock; luego conectas API)
+  final BrixApi _brixApi = BrixApi();
+  bool _saving = false;
+
   final List<String> _variedades = const [
     'ALLISON',
     'TIMPSON',
     'SWEET GLOBE',
     'TAWNY',
+    'IVORY',
   ];
   final List<String> _lotes = const ['G-6(1)', 'A-7(1)', 'B-2(3)'];
 
@@ -80,7 +83,7 @@ class _MedicionBrixPreCosechaPageState
   // Racimos por planta
   final Map<int, int> _racimosPorPlanta = {1: 0};
 
-  // Registro por racimo (key = "planta-racimo")
+  // Registro por racimo
   final Map<String, RacimoRegistro> _registroPorRacimo = {};
 
   // Racimo seleccionado
@@ -108,9 +111,6 @@ class _MedicionBrixPreCosechaPageState
     super.dispose();
   }
 
-  // =========================
-  // Helpers
-  // =========================
   String _key(int planta, int racimo) => '$planta-$racimo';
 
   int get _racimosDePlantaSel => _racimosPorPlanta[_plantaSel] ?? 0;
@@ -118,16 +118,9 @@ class _MedicionBrixPreCosechaPageState
   int _totalRegistros() => _registroPorRacimo.length;
 
   bool _tieneCambiosSinGuardar() {
-    // Si tienes lógica real de guardado (API/DB), aquí marcas dirty.
-    // Por ahora: si hay registros, asumimos que hay algo por guardar.
     return _registroPorRacimo.isNotEmpty;
   }
 
-  // ✅ Validación estricta: No se puede "Guardar evaluación completa"
-  // si falta:
-  //  - Variedad y Lote
-  //  - al menos 1 racimo en alguna planta
-  //  - TODOS los racimos creados tienen registro (tamaño+color+brix)
   bool _evaluacionCompleta() {
     if ((_variedad ?? '').isEmpty) return false;
     if ((_lote ?? '').isEmpty) return false;
@@ -146,7 +139,7 @@ class _MedicionBrixPreCosechaPageState
   }
 
   // =========================
-  // Auto-guardado (solo si está completo el racimo)
+  // Auto-guardado
   // =========================
   void _autoGuardarSiCompleto() {
     if (_racimoSel == null) return;
@@ -192,7 +185,7 @@ class _MedicionBrixPreCosechaPageState
     });
   }
 
-  // + Racimos (por planta seleccionada)
+  // + Racimos
   void _addRacimoToPlantaSel() {
     setState(() {
       final actual = _racimosPorPlanta[_plantaSel] ?? 0;
@@ -244,7 +237,6 @@ class _MedicionBrixPreCosechaPageState
     if (ok == true) onOk();
   }
 
-  // ✅ BLOQUEO: NO eliminar racimo si tiene datos guardados
   void _eliminarRacimo(int r) {
     final k = _key(_plantaSel, r);
     final tieneRegistro = _registroPorRacimo.containsKey(k);
@@ -269,7 +261,6 @@ class _MedicionBrixPreCosechaPageState
           final total = _racimosPorPlanta[_plantaSel] ?? 0;
           if (r < 1 || r > total) return;
 
-          // reindexar (seguro)
           for (int i = r + 1; i <= total; i++) {
             final oldK = _key(_plantaSel, i);
             final newK = _key(_plantaSel, i - 1);
@@ -296,7 +287,6 @@ class _MedicionBrixPreCosechaPageState
     );
   }
 
-  // ✅ BLOQUEO: NO eliminar planta si tiene algún racimo con datos guardados
   void _eliminarPlanta(int p) {
     if (_plantas <= 1) return;
 
@@ -323,7 +313,6 @@ class _MedicionBrixPreCosechaPageState
           _racimosPorPlanta.remove(p);
           _registroPorRacimo.removeWhere((k, v) => v.planta == p);
 
-          // reindex plantas hacia abajo
           for (int pl = p + 1; pl <= _plantas; pl++) {
             final cnt = _racimosPorPlanta.remove(pl) ?? 0;
             _racimosPorPlanta[pl - 1] = cnt;
@@ -375,7 +364,7 @@ class _MedicionBrixPreCosechaPageState
   }
 
   // =========================
-  // SALIR / VOLVER (go_router safe)
+  // SALIR / VOLVER
   // =========================
   Future<bool> _confirmSalir() async {
     final ok = await showDialog<bool>(
@@ -403,11 +392,10 @@ class _MedicionBrixPreCosechaPageState
     if (!ok) return;
     if (!mounted) return;
 
-    // ✅ go_router: si hay backstack, pop; si no, ir a home
     if (context.canPop()) {
       context.pop();
     } else {
-      context.go('/home'); // <-- cambia si tu ruta real es otra
+      context.go('/home');
     }
   }
 
@@ -415,7 +403,6 @@ class _MedicionBrixPreCosechaPageState
   // GUARDAR EVALUACIÓN COMPLETA
   // =========================
   Future<void> _guardarEvaluacionCompleta() async {
-    // ✅ Bloquea si NO está completa
     if (!_evaluacionCompleta()) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -427,30 +414,90 @@ class _MedicionBrixPreCosechaPageState
       return;
     }
 
-    // Aquí llamas tu API/DB.
-    // Por ahora: solo confirmación visual.
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Evaluación guardada. Total: ${_totalRegistros()} racimos.',
-        ),
-      ),
-    );
+    if (_saving) return;
 
-    // Si quieres volver al home después de guardar:
-    // if (!mounted) return;
-    // context.go('/home');
+    setState(() => _saving = true);
+
+    try {
+      final creds = await CredentialsStorage.getRemembered();
+      final username = creds.username;
+      final password = creds.password;
+
+      if (username == null || password == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No se encontraron credenciales guardadas. Vuelve a iniciar sesión y activa "Recordar".',
+            ),
+          ),
+        );
+        return;
+      }
+
+      // JSON
+      final now = DateTime.now();
+      final registros = _registroPorRacimo.values
+          .map(
+            (r) => {
+              'Planta': r.planta,
+              'NroRacimo': r.nroRacimo,
+              'Variedad': r.variedad,
+              'Lote': r.lote,
+              'Tamano': r.tamano,
+              'Color': r.color,
+              'Brix': r.brix,
+              'Fecha': r.fecha.toIso8601String(),
+            },
+          )
+          .toList();
+
+      final payload = <String, dynamic>{
+        'Variedad': _variedad,
+        'Lote': _lote,
+        'FechaEval': DateTime(now.year, now.month, now.day).toIso8601String(),
+        'TotalRacimos': registros.length,
+        'Registros': registros,
+      };
+
+      // Ejecuta SP por API
+
+      const nombreSp = 'CLI547_AGMSP_BrixPreCosecha_Guardar';
+      const entidadMapear = 'ERPAgro';
+
+      await _brixApi.ejecutarSpGuardarBrix(
+        username: username,
+        password: password,
+        nombreSp: nombreSp,
+        entidadMapear: entidadMapear,
+        payloadJson: payload,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Evaluación guardada en servidor. Total: ${_totalRegistros()} racimos.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al guardar: $e')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
-  // =========================
-  // UI
-  // =========================
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width >= 900;
 
     return PopScope(
-      canPop: false, // ✅ intercepta botón físico
+      canPop: false,
       onPopInvoked: (didPop) async {
         if (didPop) return;
         _volverHomeSeguro();
@@ -515,9 +562,7 @@ class _MedicionBrixPreCosechaPageState
                               _leftPanel(),
                               const SizedBox(height: 16),
                               _rightPanel(),
-                              const SizedBox(
-                                height: 100,
-                              ), // espacio por botones
+                              const SizedBox(height: 100),
                             ],
                           ),
                   ),
@@ -527,7 +572,6 @@ class _MedicionBrixPreCosechaPageState
           ),
         ),
 
-        // ✅ BOTONES MÁS ARRIBA (y no chocan con barra del celular)
         bottomNavigationBar: SafeArea(
           top: false,
           minimum: const EdgeInsets.fromLTRB(16, 10, 16, 16),
@@ -535,7 +579,7 @@ class _MedicionBrixPreCosechaPageState
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: _volverHomeSeguro,
+                  onPressed: _saving ? null : _volverHomeSeguro,
                   icon: const Icon(Icons.arrow_back),
                   label: const Text('Volver'),
                 ),
@@ -543,8 +587,14 @@ class _MedicionBrixPreCosechaPageState
               const SizedBox(width: 12),
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: _guardarEvaluacionCompleta,
-                  icon: const Icon(Icons.save_outlined),
+                  onPressed: _saving ? null : _guardarEvaluacionCompleta,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_outlined),
                   label: const Text('Guardar'),
                 ),
               ),
@@ -611,7 +661,7 @@ class _MedicionBrixPreCosechaPageState
                   title: 'Plantas',
                   value: _plantas,
                   onPlus: _incPlantas,
-                  color: const Color(0xFF2E7D32), // verde
+                  color: const Color(0xFF2E7D32),
                 ),
               ),
               const SizedBox(width: 12),
@@ -620,7 +670,7 @@ class _MedicionBrixPreCosechaPageState
                   title: 'Racimos',
                   value: _racimosDePlantaSel,
                   onPlus: _addRacimoToPlantaSel,
-                  color: const Color(0xFF1E88E5), // azul de botón 01
+                  color: const Color(0xFF1E88E5),
                 ),
               ),
             ],
@@ -756,9 +806,7 @@ class _MedicionBrixPreCosechaPageState
                 Color(0xFFFFB300), // ámbar oscuro
               ],
             ),
-            textColor: const Color(
-              0xFF3E2723,
-            ), // café oscuro para que se lea bien
+            textColor: const Color(0xFF3E2723),
           ),
 
           const SizedBox(height: 12),
@@ -845,10 +893,6 @@ class _MedicionBrixPreCosechaPageState
     );
   }
 }
-
-/* =========================
-   Widgets UI
-========================= */
 
 class _Card extends StatelessWidget {
   const _Card({required this.child});
